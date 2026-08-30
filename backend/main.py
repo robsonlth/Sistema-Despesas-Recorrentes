@@ -10,6 +10,52 @@ app = FastAPI()
 Base.metadata.create_all(bind=engine)
 
 
+def validar_relacionamentos_despesa(
+    dados_despesa: schemas.DespesaRecorrenteCreate,
+    db: Session
+):
+
+    fornecedor = db.query(models.Fornecedor).filter(
+        models.Fornecedor.id == dados_despesa.fornecedor_id
+    ).first()
+        
+    if fornecedor is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Fornecedor não encontrado!"
+        )
+        
+    natureza = db.query(models.NaturezaFinanceira).filter(
+        models.NaturezaFinanceira.id == dados_despesa.natureza_financeira_id
+    ).first()
+        
+    if natureza is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Natureza financeira não encontrada!"
+        )
+    
+    departamento = db.query(models.Departamento).filter(
+        models.Departamento.id == dados_despesa.departamento_id
+    ).first()
+        
+    if departamento is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Departamento não encontrado!"
+        )
+        
+    rateio = db.query(models.Rateio).filter(
+        models.Rateio.id == dados_despesa.rateio_id
+    ).first()
+        
+    if rateio is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Rateio não encontrado!"
+        )
+
+
 @app.get("/")
 def inicio():
     return {
@@ -404,6 +450,9 @@ def criar_despesa(
     despesa: schemas.DespesaRecorrenteCreate,
     db: Session = Depends(get_db)
 ):
+
+    validar_relacionamentos_despesa(despesa, db)
+    
     nova_despesa = models.DespesaRecorrente(**despesa.model_dump())
 
     db.add(nova_despesa)
@@ -454,7 +503,9 @@ def atualizar_despesa_recorrente(
         raise HTTPException(
             status_code=404,
             detail="Despesa não encontrada!"
-        )
+    )
+
+    validar_relacionamentos_despesa(dados_despesa, db)
 
     despesa.fornecedor_id = dados_despesa.fornecedor_id
     despesa.departamento_id = dados_despesa.departamento_id
