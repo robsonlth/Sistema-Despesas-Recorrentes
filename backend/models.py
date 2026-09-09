@@ -139,3 +139,48 @@ class DespesaRecorrente(Base):
         default=True,
         nullable=False
     )
+
+
+class LancamentoDespesa(Base):
+    __tablename__ = "lancamentos_despesa"
+
+    id: Mapped[int] = mapped_column(
+        primary_key=True
+    )
+
+    despesa_recorrente_id: Mapped[int] = mapped_column(
+        ForeignKey("despesas_recorrentes.id"),
+        nullable=False
+    )
+
+    mes_referencia: Mapped[date] = mapped_column(
+        Date,
+        nullable=False
+    )
+
+    valor_recebido: Mapped[Decimal] = mapped_column(
+        Numeric(10,2),
+        nullable=False
+    )
+
+    data_recebimento: Mapped[date] = mapped_column(
+        Date,
+        nullable=False
+    )
+
+    observacao: Mapped[str | None] = mapped_column(
+        String(320),
+        nullable=True
+    )
+
+    nota_pendente: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False
+    )
+
+    ativo: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False
+    )

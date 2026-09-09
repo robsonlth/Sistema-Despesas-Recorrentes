@@ -83,3 +83,23 @@ class DespesaRecorrenteResponse(DespesaRecorrenteBase):
     id: int
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class LancamentoDespesaBase(BaseModel):
+    despesa_recorrente_id: int
+    valor_recebido: Decimal
+    data_recebimento: date
+    observacao: str | None = None
+    nota_pendente: bool = False
+    ativo: bool = True
+
+
+class LancamentoDespesaCreate(LancamentoDespesaBase):
+    pass
+
+
+class LancamentoDespesaResponse(LancamentoDespesaBase):
+    id: int
+    mes_referencia: date
+
+    model_config = ConfigDict(from_attributes=True)

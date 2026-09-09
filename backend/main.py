@@ -9,7 +9,6 @@ app = FastAPI()
 
 Base.metadata.create_all(bind=engine)
 
-
 def validar_relacionamentos_despesa(
     dados_despesa: schemas.DespesaRecorrenteCreate,
     db: Session
@@ -18,13 +17,13 @@ def validar_relacionamentos_despesa(
     fornecedor = db.query(models.Fornecedor).filter(
         models.Fornecedor.id == dados_despesa.fornecedor_id
     ).first()
-        
+
     if fornecedor is None:
         raise HTTPException(
             status_code=404,
             detail="Fornecedor não encontrado!"
         )
-        
+
     natureza = db.query(models.NaturezaFinanceira).filter(
         models.NaturezaFinanceira.id == dados_despesa.natureza_financeira_id
     ).first()
@@ -544,3 +543,34 @@ def excluir_despesa_recorrente(
     db.refresh(despesa)
 
     return despesa
+
+
+@app.post(
+    "/lancamentos-despesa",
+    response_model=schemas.LancamentoDespesaResponse
+)
+def criar_lancamento_despesa(
+    dados_lancamento: schemas.LancamentoDespesaCreate,
+    db: Session = Depends(get_db)
+):
+    mes_referencia = dados_lancamento.data_recebimento.replace(day=1)
+    despesa = db.query(models.DespesaRecorrente).filter(
+        models.DespesaRecorrente.id == dados_lancamento.despesa_recorrente_id
+    ).first()
+
+    if despesa is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Despesa não encontrada!"
+        )
+    
+    novo_lancamento = models.LancamentoDespesa(
+        **dados_lancamento.model_dump(),
+        mes_referencia=mes_referencia
+    )
+
+    db.add(novo_lancamento)
+    db.commit()
+    db.refresh(novo_lancamento)
+
+    return novo_lancamento
