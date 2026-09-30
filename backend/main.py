@@ -1,7 +1,8 @@
 # Rotas da API: recebem as requisições e acessam os dados pelo SQLAlchemy.
+from datetime import date
 from typing import Annotated
 
-from fastapi import FastAPI, Depends, HTTPException, Path
+from fastapi import FastAPI, Depends, HTTPException, Path, Query
 from sqlalchemy import text, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -660,14 +661,36 @@ def criar_lancamento_despesa(
     return novo_lancamento
 
 
-# GET: lista todos os lançamentos, incluindo os inativos.
+# GET: lista os lançamentos com filtros opcionais; sem filtros, inclui os inativos.
 @app.get("/lancamentos-despesa", response_model=list[schemas.LancamentoDespesaResponse])
 def listar_lancamentos_despesa(
+    ativo: bool | None = None,
+    nota_pendente: bool | None = None,
+    mes_referencia: Annotated[date | None, Query(
+        description="Filtra pelo mês da data informada (AAAA-MM-DD); o dia é ignorado."
+    )] = None,
+    despesa_recorrente_id: Annotated[int | None, Query(gt=0, le=2147483647)] = None,
     db: Session = Depends(get_db)
 ):
-    lancamentos = db.query(models.LancamentoDespesa).all()
+    consulta = db.query(models.LancamentoDespesa)
 
-    return lancamentos
+    if ativo is not None:
+        consulta = consulta.filter(models.LancamentoDespesa.ativo == ativo)
+
+    if nota_pendente is not None:
+        consulta = consulta.filter(models.LancamentoDespesa.nota_pendente == nota_pendente)
+
+    if mes_referencia is not None:
+        # Compara com o primeiro dia do mês, como no cadastro dos lançamentos.
+        mes_referencia = mes_referencia.replace(day=1)
+        consulta = consulta.filter(models.LancamentoDespesa.mes_referencia == mes_referencia)
+
+    if despesa_recorrente_id is not None:
+        consulta = consulta.filter(
+            models.LancamentoDespesa.despesa_recorrente_id == despesa_recorrente_id
+        )
+
+    return consulta.all()
 
 
 # GET por ID: busca um lançamento específico.

@@ -48,6 +48,8 @@ class TestValidacoesAPI(unittest.IsolatedAsyncioTestCase):
 
     async def requisitar(self, metodo, caminho, dados=None, status_esperado=200):
         # Envia uma requisição à aplicação e captura a resposta pela interface ASGI.
+        # Na requisição HTTP, a rota e os parâmetros da URL ficam separados.
+        rota, _, parametros = caminho.partition("?")
         corpo = json.dumps(dados).encode() if dados is not None else b""
         mensagens = []
         recebido = False
@@ -64,8 +66,8 @@ class TestValidacoesAPI(unittest.IsolatedAsyncioTestCase):
 
         escopo = {
             "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1",
-            "method": metodo, "scheme": "http", "path": caminho,
-            "raw_path": caminho.encode(), "root_path": "", "query_string": b"",
+            "method": metodo, "scheme": "http", "path": rota,
+            "raw_path": rota.encode(), "root_path": "", "query_string": parametros.encode(),
             "headers": [(b"content-type", b"application/json")],
             "client": ("127.0.0.1", 12345), "server": ("teste", 80),
         }
@@ -202,6 +204,72 @@ class TestValidacoesAPI(unittest.IsolatedAsyncioTestCase):
         atualizado = await self.requisitar("PUT", caminho, {**dados, "valor_recebido": "0", "data_recebimento": "2026-10-15", "observacao": "  "})
         self.assertEqual(atualizado["mes_referencia"], "2026-10-01")
         self.assertIsNone(atualizado["observacao"])
+
+    async def test_filtros_de_lancamentos_isolados_e_combinados(self):
+        dados, despesa = await self.preparar_despesa()
+        outra_despesa = await self.requisitar(
+            "POST", "/despesas-recorrentes", {**dados, "descricao": "Energia"}
+        )
+        ids = []
+        # Varia cada filtro para detectar registros que não deveriam ser retornados.
+        for despesa_id, recebimento, ativo, pendente in (
+            (despesa["id"], "2026-09-01", True, True),
+            (despesa["id"], "2026-09-30", True, False),
+            (despesa["id"], "2026-09-15", False, True),
+            (despesa["id"], "2026-10-01", False, False),
+            (outra_despesa["id"], "2026-09-20", True, True),
+            (despesa["id"], "2025-09-20", True, True),
+        ):
+            criado = await self.requisitar("POST", "/lancamentos-despesa", {
+                "despesa_recorrente_id": despesa_id,
+                "data_recebimento": recebimento,
+                "valor_recebido": "100.00",
+                "ativo": ativo,
+                "nota_pendente": pendente,
+            })
+            ids.append(criado["id"])
+
+        filtro_despesa = f"despesa_recorrente_id={despesa['id']}"
+        casos = (
+            ("", ids),
+            ("ativo=true", [ids[0], ids[1], ids[4], ids[5]]),
+            ("ativo=false", [ids[2], ids[3]]),
+            ("nota_pendente=true", [ids[0], ids[2], ids[4], ids[5]]),
+            ("nota_pendente=false", [ids[1], ids[3]]),
+            ("ativo=true&nota_pendente=true", [ids[0], ids[4], ids[5]]),
+            ("ativo=false&nota_pendente=false", [ids[3]]),
+            ("mes_referencia=2026-09-01", [ids[0], ids[1], ids[2], ids[4]]),
+            ("mes_referencia=2026-09-30", [ids[0], ids[1], ids[2], ids[4]]),
+            ("mes_referencia=2026-10-01", [ids[3]]),
+            ("mes_referencia=2025-09-01", [ids[5]]),
+            (filtro_despesa, [ids[0], ids[1], ids[2], ids[3], ids[5]]),
+            (f"despesa_recorrente_id={outra_despesa['id']}", [ids[4]]),
+            (f"mes_referencia=2026-09-01&{filtro_despesa}", [ids[0], ids[1], ids[2]]),
+            (f"ativo=true&nota_pendente=true&mes_referencia=2026-09-15&{filtro_despesa}", [ids[0]]),
+            (f"ativo=false&nota_pendente=false&mes_referencia=2026-10-01&{filtro_despesa}", [ids[3]]),
+            ("mes_referencia=2027-01-01", []),
+            ("despesa_recorrente_id=2147483647", []),
+            ("ativo=true&mes_referencia=2026-10-01", []),
+        )
+        for parametros, esperados in casos:
+            with self.subTest(parametros=parametros):
+                caminho = "/lancamentos-despesa"
+                if parametros:
+                    caminho += f"?{parametros}"
+                resposta = await self.requisitar("GET", caminho)
+                self.assertCountEqual([item["id"] for item in resposta], esperados)
+
+    async def test_lancamentos_rejeita_filtros_invalidos(self):
+        for parametros in (
+            "ativo=invalido", "nota_pendente=invalido",
+            "mes_referencia=2026-02-30", "mes_referencia=2026-13-01",
+            "mes_referencia=texto", "mes_referencia=",
+            "despesa_recorrente_id=0", "despesa_recorrente_id=-1",
+            "despesa_recorrente_id=2147483648", "despesa_recorrente_id=abc",
+            "despesa_recorrente_id=1.5", "despesa_recorrente_id=",
+        ):
+            with self.subTest(parametros=parametros):
+                await self.requisitar("GET", f"/lancamentos-despesa?{parametros}", status_esperado=422)
 
     async def test_relacionamentos_inexistentes(self):
         dados, despesa = await self.preparar_despesa()
