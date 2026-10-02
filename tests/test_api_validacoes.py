@@ -271,6 +271,187 @@ class TestValidacoesAPI(unittest.IsolatedAsyncioTestCase):
             with self.subTest(parametros=parametros):
                 await self.requisitar("GET", f"/lancamentos-despesa?{parametros}", status_esperado=422)
 
+    async def test_resumo_mensal_soma_por_despesa_e_filtra_lancamentos(self):
+        dados, despesa = await self.preparar_despesa()
+        outras = []
+        for descricao in ("Energia", "Valor zero", "Somente inativos", "Sem lançamentos no mês"):
+            outras.append(await self.requisitar(
+                "POST", "/despesas-recorrentes", {**dados, "descricao": descricao}
+            ))
+
+        # Insere fora da ordem dos IDs e repete valores para conferir soma e ordenação.
+        for despesa_id, valor, recebimento, ativo, pendente in (
+            (outras[0]["id"], "80.01", "2026-10-15", True, False),
+            (despesa["id"], "200.10", "2026-10-01", True, False),
+            (despesa["id"], "150.25", "2026-10-31", True, True),
+            (despesa["id"], "150.25", "2026-10-20", True, False),
+            (despesa["id"], "700.00", "2026-10-15", False, False),
+            (despesa["id"], "900.00", "2026-09-30", True, False),
+            (despesa["id"], "800.00", "2025-10-15", True, False),
+            (outras[1]["id"], "0.00", "2026-10-15", True, False),
+            (outras[2]["id"], "600.00", "2026-10-15", False, False),
+            (outras[3]["id"], "400.00", "2026-09-15", True, False),
+        ):
+            await self.requisitar("POST", "/lancamentos-despesa", {
+                "despesa_recorrente_id": despesa_id,
+                "valor_recebido": valor,
+                "data_recebimento": recebimento,
+                "ativo": ativo,
+                "nota_pendente": pendente,
+            })
+
+        caminho = "/lancamentos-despesa/resumo-mensal"
+        for dia in ("01", "15", "31"):
+            with self.subTest(dia=dia):
+                resposta = await self.requisitar("GET", f"{caminho}?mes_referencia=2026-10-{dia}")
+                self.assertEqual(resposta, [
+                    {"despesa_recorrente_id": despesa["id"], "descricao": "Aluguel",
+                     "total_recebido": "500.60", "quantidade_lancamentos": 3},
+                    {"despesa_recorrente_id": outras[0]["id"], "descricao": "Energia",
+                     "total_recebido": "80.01", "quantidade_lancamentos": 1},
+                    {"despesa_recorrente_id": outras[1]["id"], "descricao": "Valor zero",
+                     "total_recebido": "0.00", "quantidade_lancamentos": 1},
+                    {"despesa_recorrente_id": outras[2]["id"], "descricao": "Somente inativos",
+                     "total_recebido": "0.00", "quantidade_lancamentos": 0},
+                    {"despesa_recorrente_id": outras[3]["id"], "descricao": "Sem lançamentos no mês",
+                     "total_recebido": "0.00", "quantidade_lancamentos": 0},
+                ])
+
+        sem_despesas = await self.requisitar("GET", f"{caminho}?mes_referencia=2024-01-01")
+        self.assertEqual(sem_despesas, [])
+
+    async def test_resumo_mensal_permite_total_maior_que_limite_individual(self):
+        _, despesa = await self.preparar_despesa()
+        for _ in range(2):
+            await self.requisitar("POST", "/lancamentos-despesa", {
+                "despesa_recorrente_id": despesa["id"],
+                "valor_recebido": "99999999.99",
+                "data_recebimento": "2026-10-15",
+            })
+        resposta = await self.requisitar(
+            "GET", "/lancamentos-despesa/resumo-mensal?mes_referencia=2026-10-01"
+        )
+        self.assertEqual(resposta, [
+            {"despesa_recorrente_id": despesa["id"], "descricao": "Aluguel",
+             "total_recebido": "199999999.98", "quantidade_lancamentos": 2}
+        ])
+
+    async def test_resumo_mensal_acompanha_inativacao(self):
+        _, despesa = await self.preparar_despesa()
+        lancamentos = []
+        for valor in ("100.00", "50.00"):
+            lancamentos.append(await self.requisitar("POST", "/lancamentos-despesa", {
+                "despesa_recorrente_id": despesa["id"],
+                "valor_recebido": valor,
+                "data_recebimento": "2026-10-15",
+            }))
+
+        caminho = "/lancamentos-despesa/resumo-mensal?mes_referencia=2026-10-01"
+        self.assertEqual(await self.requisitar("GET", caminho), [
+            {"despesa_recorrente_id": despesa["id"], "descricao": "Aluguel",
+             "total_recebido": "150.00", "quantidade_lancamentos": 2}
+        ])
+        await self.requisitar("DELETE", f"/lancamentos-despesa/{lancamentos[1]['id']}")
+        self.assertEqual(await self.requisitar("GET", caminho), [
+            {"despesa_recorrente_id": despesa["id"], "descricao": "Aluguel",
+             "total_recebido": "100.00", "quantidade_lancamentos": 1}
+        ])
+        await self.requisitar("DELETE", f"/lancamentos-despesa/{lancamentos[0]['id']}")
+        self.assertEqual(await self.requisitar("GET", caminho), [
+            {"despesa_recorrente_id": despesa["id"], "descricao": "Aluguel",
+             "total_recebido": "0.00", "quantidade_lancamentos": 0}
+        ])
+
+    async def test_resumo_mensal_considera_vigencia_e_situacao_das_previstas(self):
+        caminho = "/lancamentos-despesa/resumo-mensal?mes_referencia=2026-10-15"
+        self.assertEqual(await self.requisitar("GET", caminho), [])
+        dados, despesa = await self.preparar_despesa()
+        esperadas = [despesa["id"]]
+        for descricao, inicio, fim, ativo, prevista in (
+            ("Termina no primeiro dia", "2026-01-01", "2026-10-01", True, True),
+            ("Começa no último dia", "2026-10-31", None, True, True),
+            ("Vigora no meio do mês", "2026-10-10", "2026-10-20", True, True),
+            ("Terminou antes", "2026-01-01", "2026-09-30", True, False),
+            ("Começa depois", "2026-11-01", None, True, False),
+            ("Inativa sem lançamentos", "2026-01-01", None, False, False),
+        ):
+            criada = await self.requisitar("POST", "/despesas-recorrentes", {
+                **dados, "descricao": descricao, "data_inicio_vigencia": inicio,
+                "data_fim_vigencia": fim, "ativo": ativo,
+            })
+            if prevista:
+                esperadas.append(criada["id"])
+
+        resposta = await self.requisitar("GET", caminho)
+        self.assertEqual([item["despesa_recorrente_id"] for item in resposta], esperadas)
+        for item in resposta:
+            self.assertEqual(item["total_recebido"], "0.00")
+            self.assertEqual(item["quantidade_lancamentos"], 0)
+
+    async def test_resumo_mensal_preserva_lancamentos_fora_da_previsao(self):
+        dados, despesa = await self.preparar_despesa()
+        despesas = [despesa]
+        for descricao, inicio, fim in (
+            ("Vigência futura", "2026-11-01", None),
+            ("Vigência encerrada", "2026-01-01", "2026-09-30"),
+        ):
+            despesas.append(await self.requisitar("POST", "/despesas-recorrentes", {
+                **dados, "descricao": descricao, "data_inicio_vigencia": inicio,
+                "data_fim_vigencia": fim,
+            }))
+
+        for item in despesas:
+            await self.requisitar("POST", "/lancamentos-despesa", {
+                "despesa_recorrente_id": item["id"],
+                "valor_recebido": "25.50", "data_recebimento": "2026-10-15",
+            })
+        # Inativar a despesa depois do lançamento não deve esconder seu valor.
+        await self.requisitar("DELETE", f"/despesas-recorrentes/{despesa['id']}")
+        resposta = await self.requisitar(
+            "GET", "/lancamentos-despesa/resumo-mensal?mes_referencia=2026-10-01"
+        )
+        self.assertEqual(
+            [item["despesa_recorrente_id"] for item in resposta],
+            [item["id"] for item in despesas]
+        )
+        for item in resposta:
+            self.assertEqual(item["total_recebido"], "25.50")
+            self.assertEqual(item["quantidade_lancamentos"], 1)
+
+    async def test_resumo_mensal_respeita_fim_de_fevereiro_e_dezembro(self):
+        dados, despesa = await self.preparar_despesa()
+        await self.requisitar("DELETE", f"/despesas-recorrentes/{despesa['id']}")
+        for mes, ultimo_dia, dia_seguinte in (
+            ("2024-02-01", "2024-02-29", "2024-03-01"),
+            ("2025-02-01", "2025-02-28", "2025-03-01"),
+            ("2026-12-01", "2026-12-31", "2027-01-01"),
+        ):
+            with self.subTest(mes=mes):
+                prevista = await self.requisitar("POST", "/despesas-recorrentes", {
+                    **dados, "data_inicio_vigencia": ultimo_dia,
+                    "data_fim_vigencia": ultimo_dia,
+                })
+                await self.requisitar("POST", "/despesas-recorrentes", {
+                    **dados, "data_inicio_vigencia": dia_seguinte,
+                    "data_fim_vigencia": dia_seguinte,
+                })
+                resposta = await self.requisitar(
+                    "GET", f"/lancamentos-despesa/resumo-mensal?mes_referencia={mes}"
+                )
+                self.assertEqual(resposta, [
+                    {"despesa_recorrente_id": prevista["id"], "descricao": "Aluguel",
+                     "total_recebido": "0.00", "quantidade_lancamentos": 0}
+                ])
+
+    async def test_resumo_mensal_exige_mes_valido(self):
+        caminho = "/lancamentos-despesa/resumo-mensal"
+        await self.requisitar("GET", caminho, status_esperado=422)
+        for mes in ("", "texto", "2026-02-30", "2026-13-01", "2026-10-32"):
+            with self.subTest(mes=mes):
+                await self.requisitar(
+                    "GET", f"{caminho}?mes_referencia={mes}", status_esperado=422
+                )
+
     async def test_relacionamentos_inexistentes(self):
         dados, despesa = await self.preparar_despesa()
         for campo in ("fornecedor_id", "departamento_id", "natureza_financeira_id", "rateio_id"):

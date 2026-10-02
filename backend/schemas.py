@@ -212,3 +212,15 @@ class LancamentoDespesaResponse(LancamentoDespesaBase):
     mes_referencia: date
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# Acompanhamento de uma despesa no mês, incluindo as previstas sem lançamento.
+class ResumoMensalDespesaResponse(BaseModel):
+    despesa_recorrente_id: int
+    descricao: str
+    # O total pode ultrapassar o limite de valor de um lançamento individual.
+    total_recebido: Decimal
+    # Zero identifica uma despesa que ainda não tem lançamento ativo no mês.
+    quantidade_lancamentos: int
+
+    model_config = ConfigDict(from_attributes=True)

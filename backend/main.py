@@ -1,9 +1,10 @@
 # Rotas da API: recebem as requisições e acessam os dados pelo SQLAlchemy.
+from calendar import monthrange
 from datetime import date
 from typing import Annotated
 
 from fastapi import FastAPI, Depends, HTTPException, Path, Query
-from sqlalchemy import text, func
+from sqlalchemy import text, func, and_, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -689,6 +690,69 @@ def listar_lancamentos_despesa(
         consulta = consulta.filter(
             models.LancamentoDespesa.despesa_recorrente_id == despesa_recorrente_id
         )
+
+    return consulta.all()
+
+
+# GET: mostra os totais do mês e as despesas previstas ainda sem lançamento.
+# A rota fixa precisa vir antes de /{lancamento_id}, que também aceita esse caminho.
+@app.get(
+    "/lancamentos-despesa/resumo-mensal",
+    response_model=list[schemas.ResumoMensalDespesaResponse]
+)
+def resumir_lancamentos_mensais(
+    mes_referencia: Annotated[date, Query(
+        description="Mês da consulta (AAAA-MM-DD); o dia é ignorado."
+    )],
+    db: Session = Depends(get_db)
+):
+    """Soma os lançamentos ativos e inclui as despesas previstas no mês.
+
+    Uma despesa é prevista quando está ativa e sua vigência cruza o mês.
+    Despesas com lançamentos ativos no mês aparecem mesmo fora dessa previsão,
+    preservando a consulta dos valores já registrados.
+    """
+    mes_referencia = mes_referencia.replace(day=1)
+    # monthrange informa o último dia, incluindo fevereiro em anos bissextos.
+    ultimo_dia = monthrange(mes_referencia.year, mes_referencia.month)[1]
+    fim_do_mes = mes_referencia.replace(day=ultimo_dia)
+
+    # COALESCE transforma a soma ausente em zero; COUNT conta os lançamentos reais.
+    consulta = db.query(
+        models.DespesaRecorrente.id.label("despesa_recorrente_id"),
+        models.DespesaRecorrente.descricao,
+        func.coalesce(func.sum(models.LancamentoDespesa.valor_recebido), 0).label("total_recebido"),
+        func.count(models.LancamentoDespesa.id).label("quantidade_lancamentos")
+    ).outerjoin(
+        models.LancamentoDespesa,
+        # Filtrar no JOIN mantém a despesa mesmo sem lançamento ativo neste mês.
+        and_(
+            models.LancamentoDespesa.despesa_recorrente_id == models.DespesaRecorrente.id,
+            models.LancamentoDespesa.ativo.is_(True),
+            models.LancamentoDespesa.mes_referencia == mes_referencia
+        )
+    )
+
+    consulta = consulta.filter(
+        or_(
+            and_(
+                models.DespesaRecorrente.ativo.is_(True),
+                models.DespesaRecorrente.data_inicio_vigencia <= fim_do_mes,
+                or_(
+                    models.DespesaRecorrente.data_fim_vigencia.is_(None),
+                    models.DespesaRecorrente.data_fim_vigencia >= mes_referencia
+                )
+            ),
+            # Não oculta valores já lançados se a despesa foi inativada depois.
+            models.LancamentoDespesa.id.is_not(None)
+        )
+    )
+
+    # GROUP BY produz um total por despesa; ORDER BY organiza a resposta pelo ID.
+    consulta = consulta.group_by(
+        models.DespesaRecorrente.id,
+        models.DespesaRecorrente.descricao
+    ).order_by(models.DespesaRecorrente.id)
 
     return consulta.all()
 
