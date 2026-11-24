@@ -14,8 +14,7 @@ def validar_nome_cadastro(nome: str) -> str:
 def calcular_digito_cnpj(base: str, pesos: list[int]) -> str:
     soma = 0
 
-    # A Receita usa o código ASCII menos 48 para converter números e letras.
-    # Multiplica cada caractere convertido pelo peso correspondente.
+    # Converte cada caractere pelo código ASCII menos 48, conforme a Receita Federal.
     for caractere, peso in zip(base, pesos):
         soma += (ord(caractere) - 48) * peso
 
@@ -68,5 +67,5 @@ def validar_cnpj(cnpj: str | None) -> str | None:
     if cnpj_limpo[-2:] != primeiro_digito + segundo_digito:
         raise ValueError("Os dígitos verificadores do CNPJ são inválidos.")
 
-    # Salva sempre sem máscara e com letras maiúsculas para comparar duplicados.
+    # Retorna o CNPJ sem máscara e em maiúsculas para comparar duplicados.
     return cnpj_limpo

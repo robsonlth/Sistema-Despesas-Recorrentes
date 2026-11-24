@@ -4,11 +4,12 @@
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from datetime import date
 from decimal import Decimal
+from typing import Literal
 
 from backend.validacoes import validar_cnpj, validar_nome_cadastro
 
 
-# Dados de fornecedores.
+# Fornecedores
 class FornecedorBase(BaseModel):
     nome: str
     cnpj: str | None = None
@@ -17,7 +18,7 @@ class FornecedorBase(BaseModel):
 
 # As regras de entrada ficam no Create para não impedir a leitura de dados antigos.
 class FornecedorCreate(FornecedorBase):
-    # Rejeita campos desconhecidos, como um nome de campo digitado errado.
+    # Rejeita campos que não fazem parte do cadastro.
     model_config = ConfigDict(extra="forbid")
 
     # Remove os espaços das pontas e valida o tamanho do nome.
@@ -44,7 +45,7 @@ class FornecedorResponse(FornecedorBase):
     model_config = ConfigDict(from_attributes=True)
 
 
-# Dados de departamentos.
+# Departamentos
 class DepartamentoBase(BaseModel):
     nome: str
     ativo: bool = True
@@ -65,7 +66,7 @@ class DepartamentoResponse(DepartamentoBase):
     model_config = ConfigDict(from_attributes=True)
 
 
-# Dados de naturezas financeiras.
+# Naturezas financeiras
 class NaturezaFinanceiraBase(BaseModel):
     nome: str
     ativo: bool = True
@@ -86,7 +87,7 @@ class NaturezaFinanceiraResponse(NaturezaFinanceiraBase):
     model_config = ConfigDict(from_attributes=True)
 
 
-# Dados de rateios.
+# Rateios
 class RateioBase(BaseModel):
     nome: str
     ativo: bool = True
@@ -107,12 +108,42 @@ class RateioResponse(RateioBase):
     model_config = ConfigDict(from_attributes=True)
 
 
-# Dados de despesas recorrentes e dos cadastros ligados a elas.
+# Parcelas de rateio de cada despesa
+class DespesaRateioBase(BaseModel):
+    rateio_id: int
+    percentual: Decimal | None = None
+    valor: Decimal | None = None
+
+
+class DespesaRateioCreate(DespesaRateioBase):
+    model_config = ConfigDict(extra="forbid")
+
+    rateio_id: int = Field(strict=True, gt=0, le=2147483647)
+    percentual: Decimal | None = Field(
+        default=None, ge=0, le=100, max_digits=5, decimal_places=2, allow_inf_nan=False
+    )
+    valor: Decimal | None = Field(
+        default=None, ge=0, max_digits=10, decimal_places=2, allow_inf_nan=False
+    )
+
+    @model_validator(mode="after")
+    def validar_medida(self):
+        if (self.percentual is None) == (self.valor is None):
+            raise ValueError("Informe a porcentagem ou o valor de cada rateio, nunca os dois.")
+        return self
+
+
+class DespesaRateioResponse(DespesaRateioBase):
+    model_config = ConfigDict(from_attributes=True)
+
+
+# Despesas recorrentes
 class DespesaRecorrenteBase(BaseModel):
     fornecedor_id: int
     departamento_id: int
     natureza_financeira_id: int
-    rateio_id: int
+    rateios: list[DespesaRateioResponse]
+    dia_vencimento: int | None = None
     descricao: str
     data_inicio_vigencia: date
     data_fim_vigencia: date | None = None
@@ -127,7 +158,8 @@ class DespesaRecorrenteCreate(DespesaRecorrenteBase):
     fornecedor_id: int = Field(strict=True, gt=0, le=2147483647)
     departamento_id: int = Field(strict=True, gt=0, le=2147483647)
     natureza_financeira_id: int = Field(strict=True, gt=0, le=2147483647)
-    rateio_id: int = Field(strict=True, gt=0, le=2147483647)
+    rateios: list[DespesaRateioCreate] = Field(min_length=1)
+    dia_vencimento: int | None = Field(default=None, strict=True, ge=1, le=31)
 
     # Numeric(10, 2) permite oito dígitos inteiros e duas casas decimais.
     # Zero é permitido; valores negativos e não finitos são rejeitados.
@@ -138,6 +170,25 @@ class DespesaRecorrenteCreate(DespesaRecorrenteBase):
         decimal_places=2,
         allow_inf_nan=False
     )
+
+    @model_validator(mode="after")
+    def validar_rateios(self):
+        ids = [item.rateio_id for item in self.rateios]
+        if len(ids) != len(set(ids)):
+            raise ValueError("Não repita o mesmo rateio na despesa.")
+
+        por_percentual = [item.percentual is not None for item in self.rateios]
+        if all(por_percentual):
+            if sum(item.percentual for item in self.rateios) != Decimal("100"):
+                raise ValueError("As porcentagens dos rateios devem somar 100%.")
+        elif any(por_percentual):
+            raise ValueError("Use somente porcentagens ou somente valores nos rateios.")
+        else:
+            if self.valor_estimado is None:
+                raise ValueError("Informe o valor estimado da despesa para ratear em reais.")
+            if sum(item.valor for item in self.rateios) != self.valor_estimado:
+                raise ValueError("A soma dos rateios deve ser igual ao valor estimado da despesa.")
+        return self
 
     @field_validator("descricao")
     @classmethod
@@ -167,7 +218,7 @@ class DespesaRecorrenteResponse(DespesaRecorrenteBase):
     model_config = ConfigDict(from_attributes=True)
 
 
-# Dados de lançamentos de despesas.
+# Lançamentos de despesas
 class LancamentoDespesaBase(BaseModel):
     despesa_recorrente_id: int
     valor_recebido: Decimal
@@ -214,7 +265,7 @@ class LancamentoDespesaResponse(LancamentoDespesaBase):
     model_config = ConfigDict(from_attributes=True)
 
 
-# Acompanhamento de uma despesa no mês, incluindo as previstas sem lançamento.
+# Resumo mensal
 class ResumoMensalDespesaResponse(BaseModel):
     despesa_recorrente_id: int
     descricao: str
@@ -224,3 +275,35 @@ class ResumoMensalDespesaResponse(BaseModel):
     quantidade_lancamentos: int
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# Análise por competência
+class AnaliseDespesaResponse(BaseModel):
+    despesa_recorrente_id: int
+    descricao: str
+    fornecedor: str
+    departamento: str
+    valor_estimado: Decimal
+    origem_estimativa: Literal["cadastro", "media_historica"]
+    meses_historico: int = Field(ge=0, le=3)
+    valor_realizado: Decimal
+    diferenca: Decimal
+    variacao_percentual: Decimal | None
+    quantidade_lancamentos: int
+    quantidade_notas_pendentes: int
+    # A lista permite mostrar, por exemplo, excesso e nota pendente juntos.
+    situacoes: list[Literal[
+        "sem_lancamento", "dentro_do_estimado", "acima_do_estimado", "nota_pendente"
+    ]]
+
+
+class AnaliseCompetenciaResponse(BaseModel):
+    competencia: date
+    total_estimado: Decimal
+    total_realizado: Decimal
+    diferenca: Decimal
+    variacao_percentual: Decimal | None
+    despesas_pendentes: int
+    notas_pendentes: int
+    despesas_excluidas: int
+    despesas: list[AnaliseDespesaResponse]

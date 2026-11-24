@@ -8,7 +8,7 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 # Carrega as configurações do arquivo .env.
 load_dotenv()
 
-# Lê os dados de acesso sem colocar a senha diretamente no código.
+# Os dados de conexão ficam nas variáveis de ambiente.
 DB_HOST = os.getenv("DB_HOST")
 DB_PORT = os.getenv("DB_PORT")
 DB_NAME = os.getenv("DB_NAME")
@@ -24,8 +24,7 @@ DATABASE_URL = (
 # O engine gerencia as conexões com o banco.
 engine = create_engine(DATABASE_URL)
 
-# Cria sessões para consultar, cadastrar e atualizar os registros.
-# As rotas confirmam as alterações com commit().
+# Cada requisição usa uma sessão, e as rotas confirmam as alterações com commit().
 SessionLocal = sessionmaker(
     autocommit=False,
     autoflush=False,

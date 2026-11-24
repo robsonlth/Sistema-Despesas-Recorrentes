@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import Layout from '../components/Layout.jsx'
+import DetalhesRateio from '../components/DetalhesRateio.jsx'
 import Modal from '../components/Modal.jsx'
 import FormularioLancamento from '../components/FormularioLancamento.jsx'
 import { carregarPendencias } from '../services/api.js'
@@ -12,7 +13,6 @@ import {
   formatarValor,
 } from '../utils/formatacao.js'
 
-// Controla os filtros, a consulta dos dados e os formulários da tela.
 export default function Pendencias() {
   const [mes, setMes] = useState(() => dataLocalHoje().slice(0, 7))
   const [departamento, setDepartamento] = useState('')
@@ -28,7 +28,7 @@ export default function Pendencias() {
   const erro = carregando ? '' : consulta.erro
 
   useEffect(() => {
-    // Cancela a consulta antiga ao mudar de mês ou sair da tela.
+    // Cancela a consulta ao mudar de competência ou sair da tela.
     const controle = new AbortController()
     carregarPendencias(mes, controle.signal)
       .then((resposta) => {
@@ -65,7 +65,7 @@ export default function Pendencias() {
     setMensagem(
       `Lançamento salvo em ${formatarMes(registro.mes_referencia.slice(0, 7))}.`,
     )
-    // Consulta os dados novamente depois de salvar.
+    // Atualiza a consulta mesmo se a competência não mudou.
     setAtualizacao((valor) => valor + 1)
   }
 
@@ -114,7 +114,7 @@ export default function Pendencias() {
             </div>
           </div>
           <div className="filtro-departamento">
-            <label htmlFor="departamento">Tipo de despesa/Departamento</label>
+            <label htmlFor="departamento">Tipo de despesa / departamento</label>
             <select
               id="departamento"
               value={departamento}
@@ -132,7 +132,7 @@ export default function Pendencias() {
           </div>
           <p className="filtro-contexto">
             <span>
-              Visão da competência
+              Competência selecionada
               <br />
               <strong>{formatarMes(mes)}</strong>
             </span>
@@ -164,12 +164,12 @@ export default function Pendencias() {
             </div>
             <div className="indicador-valor">
               {acompanhamento?.pendentes.length ?? '—'}
-              <span>pendentes</span>
+              <span>{acompanhamento?.pendentes.length === 1 ? 'pendente' : 'pendentes'}</span>
             </div>
           </article>
           <article className="indicador">
             <div className="indicador-cabecalho">
-              <span>Progresso de lançamentos</span>
+              <span>Progresso dos lançamentos</span>
             </div>
             <div className="progresso-numeros">
               <strong>
@@ -200,14 +200,72 @@ export default function Pendencias() {
             onClick={() => setModal({ tipo: 'notas' })}
           >
             <div className="indicador-cabecalho">
-              <span>Notas pendentes</span>
+              <span>Notas fiscais pendentes</span>
             </div>
             <div className="indicador-valor">
               {acompanhamento?.notas.length ?? '—'}
-              <span>nota(s) pendente(s)</span>
+              <span>{acompanhamento?.notas.length === 1 ? 'nota pendente' : 'notas pendentes'}</span>
             </div>
           </button>
         </section>
+
+        {acompanhamento?.acimaDoEstimado.length > 0 && (
+          <section className="despesas-acima-estimado" aria-labelledby="titulo-acima-estimado">
+            <div className="cabecalho-lista cabecalho-excedentes">
+              <h2 id="titulo-acima-estimado">
+                Acima do estimado
+                <span className="contador">{acompanhamento.acimaDoEstimado.length}</span>
+              </h2>
+              <p>
+                Excedente total <strong>{formatarValor(acompanhamento.totalExcedente)}</strong>
+              </p>
+            </div>
+            <div className="grupo-despesas">
+              <div className="tabela-rolagem" tabIndex={0} role="region" aria-label="Despesas acima do estimado">
+                <table className="tabela-despesas tabela-acima-estimado">
+                  <thead>
+                    <tr>
+                      <th scope="col">Fornecedor / despesa</th>
+                      <th scope="col" className="coluna-valor">Estimado</th>
+                      <th scope="col" className="coluna-valor">Lançado no mês</th>
+                      <th scope="col" className="coluna-valor">Acima do estimado</th>
+                      <th scope="col" className="coluna-acao">Lançamentos</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {acompanhamento.acimaDoEstimado.map((despesa) => (
+                      <tr key={despesa.id}>
+                        <td>
+                          <strong className="fornecedor-nome">{despesa.fornecedor}</strong>
+                          <span className="despesa-descricao">{despesa.descricao}</span>
+                          <span className="despesa-descricao">{despesa.departamento}</span>
+                        </td>
+                        <td className="coluna-valor">{formatarValor(despesa.valor_estimado)}</td>
+                        <td className="coluna-valor">
+                          <strong className="valor-despesa">{formatarValor(despesa.total_recebido)}</strong>
+                        </td>
+                        <td className="coluna-valor">
+                          <strong className="valor-excedente">{formatarValor(despesa.valor_excedente)}</strong>
+                        </td>
+                        <td className="coluna-acao">
+                          <button
+                            type="button"
+                            className="botao secundario"
+                            aria-haspopup="dialog"
+                            aria-label={`Exibir lançamentos de ${despesa.descricao}`}
+                            onClick={() => setModal({ tipo: 'excedente', despesa })}
+                          >
+                            {despesa.lancamentos.length === 1 ? 'Exibir lançamento' : 'Exibir lançamentos'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        )}
 
         <section
           aria-labelledby="titulo-lista"
@@ -245,108 +303,93 @@ export default function Pendencias() {
                 Tentar novamente
               </button>
             </div>
-          ) : acompanhamento.grupos.length === 0 ? (
+          ) : acompanhamento.pendentes.length === 0 ? (
             <div className="estado-vazio">
               <h3>
                 {acompanhamento.total
-                  ? 'Tudo em dia nesta competência'
+                  ? 'Todas as despesas previstas foram lançadas'
                   : 'Nenhuma despesa prevista'}
               </h3>
               <p>
                 {acompanhamento.total
-                  ? 'Todas as despesas previstas já têm um lançamento registrado.'
-                  : 'Não há despesas previstas para o filtro selecionado.'}
+                  ? 'Não há despesas aguardando lançamento para os filtros selecionados.'
+                  : 'Não há despesas previstas para os filtros selecionados.'}
               </p>
             </div>
           ) : (
-            acompanhamento.grupos.map((grupo) => (
-              <section
-                className="grupo-despesas"
-                key={grupo.id}
-                aria-labelledby={`grupo-${grupo.id}`}
-              >
-                <header className="grupo-cabecalho">
-                  <div>
-                    <h3 id={`grupo-${grupo.id}`}>{grupo.nome}</h3>
-                    <span className="contador">{grupo.despesas.length}</span>
-                  </div>
-                  <span>
-                    {grupo.despesas.length === 1
-                      ? '1 despesa pendente'
-                      : `${grupo.despesas.length} despesas pendentes`}
-                  </span>
-                </header>
-                <div className="tabela-rolagem">
-                  <table className="tabela-despesas">
-                    <thead>
-                      <tr>
-                        <th scope="col">Fornecedor / Despesa</th>
-                        <th scope="col">Natureza</th>
-                        <th scope="col">Rateio</th>
-                        <th scope="col" className="coluna-valor">
-                          Valor médio estimado<sup>*</sup>
-                        </th>
-                        <th scope="col">
-                          <span className="somente-leitor">Ações</span>
-                        </th>
+            <div className="grupo-despesas">
+              <div className="tabela-rolagem" role="region" aria-label="Despesas aguardando lançamento" tabIndex={0}>
+                <table className="tabela-despesas">
+                  <thead>
+                    <tr>
+                      <th scope="col">Fornecedor / despesa</th>
+                      <th scope="col">Natureza</th>
+                      <th scope="col">Rateios / vencimento</th>
+                      <th scope="col" className="coluna-valor">
+                        Valor estimado<sup>*</sup>
+                      </th>
+                      <th scope="col">
+                        <span className="somente-leitor">Ações</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {acompanhamento.pendentes.map((despesa) => (
+                      <tr
+                        key={despesa.id}
+                        className={despesa.vencimento.vencido ? 'vencimento-atrasado'
+                          : despesa.vencimento.proximo ? 'vencimento-proximo' : undefined}
+                      >
+                        <td>
+                          <strong className="fornecedor-nome">
+                            {despesa.fornecedor}
+                          </strong>
+                          <span className="despesa-descricao">
+                            {despesa.descricao}
+                          </span>
+                          <span className="detalhe-recorrente">{despesa.departamento}</span>
+                          <span className="despesa-contrato">
+                            Contrato:{' '}
+                            <span aria-label="Não informado">—</span>
+                          </span>
+                        </td>
+                        <td>{despesa.natureza}</td>
+                        <td>
+                          <DetalhesRateio despesa={despesa} vencimento={despesa.vencimento} />
+                        </td>
+                        <td className="coluna-valor">
+                          <strong
+                            className={
+                              despesa.valor_estimado == null
+                                ? 'valor-ausente'
+                                : 'valor-despesa'
+                            }
+                          >
+                            {formatarValor(despesa.valor_estimado)}
+                          </strong>
+                        </td>
+                        <td className="coluna-acao">
+                          <button
+                            type="button"
+                            className="botao botao-lancar"
+                            aria-label={`Lançar ${despesa.descricao} — ${despesa.fornecedor}`}
+                            onClick={() =>
+                              setModal({ tipo: 'lancamento', despesa })
+                            }
+                          >
+                            Lançar
+                          </button>
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {grupo.despesas.map((despesa) => (
-                        <tr key={despesa.id}>
-                          <td>
-                            <strong className="fornecedor-nome">
-                              {despesa.fornecedor}
-                            </strong>
-                            <span className="despesa-descricao">
-                              {despesa.descricao}
-                            </span>
-                            <span className="despesa-contrato">
-                              Contrato:{' '}
-                              <span aria-label="Não informado">—</span>
-                            </span>
-                          </td>
-                          <td>{despesa.natureza}</td>
-                          <td>
-                            <span className="etiqueta-rateio">
-                              {despesa.rateio}
-                            </span>
-                          </td>
-                          <td className="coluna-valor">
-                            <strong
-                              className={
-                                despesa.valor_estimado == null
-                                  ? 'valor-ausente'
-                                  : 'valor-despesa'
-                              }
-                            >
-                              {formatarValor(despesa.valor_estimado)}
-                            </strong>
-                          </td>
-                          <td className="coluna-acao">
-                            <button
-                              type="button"
-                              className="botao botao-lancar"
-                              aria-label={`Lançar ${despesa.descricao} — ${despesa.fornecedor}`}
-                              onClick={() =>
-                                setModal({ tipo: 'lancamento', despesa })
-                              }
-                            >
-                              Lançar
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-            ))
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           )}
           {!carregando && !erro && acompanhamento.pendentes.length > 0 && (
             <p className="nota-estimativa">
-              * Exibimos o valor estimado cadastrado para a despesa. A média
-              histórica não está disponível.
+              * Valor estimado informado no cadastro da despesa.
             </p>
           )}
         </section>
@@ -361,9 +404,39 @@ export default function Pendencias() {
           onSalvo={concluirLancamento}
         />
       )}
+      {modal?.tipo === 'excedente' && (
+        <Modal
+          className="modal-consulta-lancamentos"
+          titulo="Lançamentos"
+          descricao={`${modal.despesa.fornecedor} · ${modal.despesa.descricao}`}
+          onFechar={() => setModal(null)}
+        >
+          <div className="lista-notas">
+            {modal.despesa.lancamentos.length ? (
+              modal.despesa.lancamentos.map((lancamento) => (
+                <article className="nota-item" key={lancamento.id}>
+                  <div>
+                    <span>Recebido em {formatarData(lancamento.data_recebimento)}</span>
+                    <span>Justificativa</span>
+                    <p className="nota-observacao observacao-consulta">
+                      {lancamento.observacao?.trim() || 'Não informada'}
+                    </p>
+                  </div>
+                  <strong>{formatarValor(lancamento.valor_recebido)}</strong>
+                </article>
+              ))
+            ) : (
+              <div className="estado-vazio">
+                <h3>Nenhum lançamento encontrado</h3>
+                <p>Não há lançamentos ativos para esta despesa na competência.</p>
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
       {modal?.tipo === 'notas' && (
         <Modal
-          titulo="Notas pendentes"
+          titulo="Notas fiscais pendentes"
           descricao={`Lançamentos de ${formatarMes(mes)}${departamento ? ` · ${dados.departamentos.find((item) => item.id === Number(departamento))?.nome}` : ''}`}
           onFechar={() => setModal(null)}
         >
@@ -375,7 +448,7 @@ export default function Pendencias() {
                     <strong>{nota.despesa.fornecedor}</strong>
                     <p>{nota.despesa.descricao}</p>
                     <span>
-                      Recebimento em {formatarData(nota.data_recebimento)}
+                      Recebido em {formatarData(nota.data_recebimento)}
                     </span>
                     {nota.observacao && (
                       <p className="nota-observacao">{nota.observacao}</p>
@@ -386,8 +459,8 @@ export default function Pendencias() {
               ))
             ) : (
               <div className="estado-vazio">
-                <h3>Nenhuma nota pendente</h3>
-                <p>Não há notas pendentes para os filtros selecionados.</p>
+                <h3>Nenhuma nota fiscal pendente</h3>
+                <p>Não há notas fiscais pendentes para os filtros selecionados.</p>
               </div>
             )}
           </div>

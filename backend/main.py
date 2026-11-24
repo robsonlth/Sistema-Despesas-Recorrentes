@@ -1,17 +1,17 @@
 # Rotas da API: recebem as requisições e acessam os dados pelo SQLAlchemy.
-from calendar import monthrange
 from datetime import date
 from typing import Annotated
 
-from fastapi import FastAPI, Depends, HTTPException, Path, Query
-from sqlalchemy import text, func, and_, or_
+from fastapi import FastAPI, Depends, HTTPException, Path, Query, Response
+from sqlalchemy import text, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend import models, schemas
+from backend.acompanhamento import consultar_historico_mensal, consultar_resumo_mensal
+from backend.analise import calcular_analise
 from backend.database import Base, SessionLocal, engine
 
-# Cria a aplicação FastAPI.
 app = FastAPI()
 
 # Cria as tabelas que ainda não existem no banco.
@@ -70,14 +70,12 @@ def validar_relacionamentos_despesa(
             detail="Departamento não encontrado!"
         )
         
-    rateio = db.query(models.Rateio).filter(
-        models.Rateio.id == dados_despesa.rateio_id
-    ).first()
-        
-    if rateio is None:
+    ids_rateios = {item.rateio_id for item in dados_despesa.rateios}
+    rateios = db.query(models.Rateio.id).filter(models.Rateio.id.in_(ids_rateios)).all()
+    if {item.id for item in rateios} != ids_rateios:
         raise HTTPException(
             status_code=404,
-            detail="Rateio não encontrado!"
+            detail="Um ou mais rateios não foram encontrados."
         )
 
 
@@ -123,10 +121,8 @@ def criar_fornecedor(
 ):
     validar_cnpj_unico(fornecedor.cnpj, db)
 
-    # Converte os dados validados pelo schema em um objeto do model.
     novo_fornecedor = models.Fornecedor(**fornecedor.model_dump())
 
-    # Salva o fornecedor e carrega os dados gerados pelo banco.
     db.add(novo_fornecedor)
     try:
         db.commit()
@@ -134,7 +130,7 @@ def criar_fornecedor(
         # Outro cadastro pode ter usado o CNPJ entre a consulta e o commit.
         db.rollback()
         validar_cnpj_unico(fornecedor.cnpj, db)
-        # Se o erro não for CNPJ duplicado, preserva o erro original para investigação.
+        # Mantém o erro original quando a falha não é um CNPJ duplicado.
         raise
     db.refresh(novo_fornecedor)
 
@@ -149,18 +145,15 @@ def listar_fornecedores(db: Session = Depends(get_db)):
 
 
 # GET por ID: busca um fornecedor específico.
-# Valida os limites do ID recebido na URL.
 @app.get("/fornecedores/{fornecedor_id}", response_model=schemas.FornecedorResponse)
 def buscar_fornecedor(
     fornecedor_id: Annotated[int, Path(gt=0, le=2147483647)],
     db: Session = Depends(get_db)
 ):
-    # Procura o fornecedor pelo ID informado.
     fornecedor = db.query(models.Fornecedor).filter(
         models.Fornecedor.id == fornecedor_id
     ).first()
 
-    # Retorna erro 404 quando o fornecedor não existe.
     if fornecedor is None:
         raise HTTPException(
             status_code=404,
@@ -529,7 +522,10 @@ def criar_despesa(
 
     validar_relacionamentos_despesa(despesa, db)
     
-    nova_despesa = models.DespesaRecorrente(**despesa.model_dump())
+    nova_despesa = models.DespesaRecorrente(
+        **despesa.model_dump(exclude={"rateios"}),
+        rateios=[models.DespesaRateio(**item.model_dump()) for item in despesa.rateios]
+    )
 
     db.add(nova_despesa)
     db.commit()
@@ -589,7 +585,18 @@ def atualizar_despesa_recorrente(
     despesa.fornecedor_id = dados_despesa.fornecedor_id
     despesa.departamento_id = dados_despesa.departamento_id
     despesa.natureza_financeira_id = dados_despesa.natureza_financeira_id
-    despesa.rateio_id = dados_despesa.rateio_id
+    # Atualiza as parcelas existentes e remove apenas os vínculos retirados da lista.
+    rateios_atuais = {item.rateio_id: item for item in despesa.rateios}
+    novos_rateios = []
+    for item in dados_despesa.rateios:
+        parcela = rateios_atuais.get(item.rateio_id)
+        if parcela is None:
+            parcela = models.DespesaRateio(rateio_id=item.rateio_id)
+        parcela.percentual = item.percentual
+        parcela.valor = item.valor
+        novos_rateios.append(parcela)
+    despesa.rateios = novos_rateios
+    despesa.dia_vencimento = dados_despesa.dia_vencimento
     despesa.descricao = dados_despesa.descricao
     despesa.data_inicio_vigencia = dados_despesa.data_inicio_vigencia
     despesa.data_fim_vigencia = dados_despesa.data_fim_vigencia
@@ -639,7 +646,6 @@ def criar_lancamento_despesa(
     # Usa o primeiro dia do mês de recebimento para representar o mês de referência.
     mes_referencia = dados_lancamento.data_recebimento.replace(day=1)
 
-    # Confere se a despesa existe antes de vincular o lançamento a ela.
     despesa = db.query(models.DespesaRecorrente).filter(
         models.DespesaRecorrente.id == dados_lancamento.despesa_recorrente_id
     ).first()
@@ -695,7 +701,7 @@ def listar_lancamentos_despesa(
 
 
 # GET: mostra os totais do mês e as despesas previstas ainda sem lançamento.
-# A rota fixa precisa vir antes de /{lancamento_id}, que também aceita esse caminho.
+# As rotas fixas ficam antes de /{lancamento_id} para não serem tratadas como um ID.
 @app.get(
     "/lancamentos-despesa/resumo-mensal",
     response_model=list[schemas.ResumoMensalDespesaResponse]
@@ -706,55 +712,27 @@ def resumir_lancamentos_mensais(
     )],
     db: Session = Depends(get_db)
 ):
-    """Soma os lançamentos ativos e inclui as despesas previstas no mês.
+    return consultar_resumo_mensal(db, mes_referencia)
 
-    Uma despesa é prevista quando está ativa e sua vigência cruza o mês.
-    Despesas com lançamentos ativos no mês aparecem mesmo fora dessa previsão,
-    preservando a consulta dos valores já registrados.
-    """
-    mes_referencia = mes_referencia.replace(day=1)
-    # monthrange informa o último dia, incluindo fevereiro em anos bissextos.
-    ultimo_dia = monthrange(mes_referencia.year, mes_referencia.month)[1]
-    fim_do_mes = mes_referencia.replace(day=ultimo_dia)
 
-    # COALESCE transforma a soma ausente em zero; COUNT conta os lançamentos reais.
-    consulta = db.query(
-        models.DespesaRecorrente.id.label("despesa_recorrente_id"),
-        models.DespesaRecorrente.descricao,
-        func.coalesce(func.sum(models.LancamentoDespesa.valor_recebido), 0).label("total_recebido"),
-        func.count(models.LancamentoDespesa.id).label("quantidade_lancamentos")
-    ).outerjoin(
-        models.LancamentoDespesa,
-        # Filtrar no JOIN mantém a despesa mesmo sem lançamento ativo neste mês.
-        and_(
-            models.LancamentoDespesa.despesa_recorrente_id == models.DespesaRecorrente.id,
-            models.LancamentoDespesa.ativo.is_(True),
-            models.LancamentoDespesa.mes_referencia == mes_referencia
-        )
-    )
-
-    consulta = consulta.filter(
-        or_(
-            and_(
-                models.DespesaRecorrente.ativo.is_(True),
-                models.DespesaRecorrente.data_inicio_vigencia <= fim_do_mes,
-                or_(
-                    models.DespesaRecorrente.data_fim_vigencia.is_(None),
-                    models.DespesaRecorrente.data_fim_vigencia >= mes_referencia
-                )
-            ),
-            # Não oculta valores já lançados se a despesa foi inativada depois.
-            models.LancamentoDespesa.id.is_not(None)
-        )
-    )
-
-    # GROUP BY produz um total por despesa; ORDER BY organiza a resposta pelo ID.
-    consulta = consulta.group_by(
-        models.DespesaRecorrente.id,
-        models.DespesaRecorrente.descricao
-    ).order_by(models.DespesaRecorrente.id)
-
-    return consulta.all()
+# GET: compara os valores estimados e realizados na competência.
+@app.get(
+    "/lancamentos-despesa/analise",
+    response_model=schemas.AnaliseCompetenciaResponse,
+)
+def analisar_competencia(
+    mes_referencia: Annotated[date, Query(
+        description="Mês da análise (AAAA-MM-DD); o dia é ignorado."
+    )],
+    db: Session = Depends(get_db),
+):
+    resumos = consultar_resumo_mensal(db, mes_referencia)
+    despesas_sem_estimativa = [
+        resumo.despesa_recorrente_id for resumo in resumos
+        if resumo.valor_estimado is None
+    ]
+    historico = consultar_historico_mensal(db, mes_referencia, despesas_sem_estimativa)
+    return calcular_analise(mes_referencia, resumos, historico)
 
 
 # GET por ID: busca um lançamento específico.
@@ -822,16 +800,15 @@ def atualizar_lancamento_despesa(
     return lancamento
 
 
-# DELETE: inativa o lançamento e mantém o histórico no banco.
-@app.delete(
-    "/lancamentos-despesa/{lancamento_id}",
+# PATCH: inativa o lançamento e mantém o registro no histórico.
+@app.patch(
+    "/lancamentos-despesa/{lancamento_id}/inativar",
     response_model=schemas.LancamentoDespesaResponse
 )
-def excluir_lancamento_despesa(
+def inativar_lancamento_despesa(
     lancamento_id: Annotated[int, Path(gt=0, le=2147483647)],
     db: Session = Depends(get_db)
 ):
-    # Busca o lançamento que será inativado.
     lancamento = db.query(models.LancamentoDespesa).filter(
         models.LancamentoDespesa.id == lancamento_id
     ).first()
@@ -842,10 +819,24 @@ def excluir_lancamento_despesa(
             detail="Lançamento não encontrado!"
         )
 
-    # A exclusão é lógica: o registro continua salvo, mas fica inativo.
     lancamento.ativo = False
 
     db.commit()
     db.refresh(lancamento)
 
     return lancamento
+
+
+# DELETE: exclui o lançamento definitivamente.
+@app.delete("/lancamentos-despesa/{lancamento_id}", status_code=204)
+def excluir_lancamento_despesa(
+    lancamento_id: Annotated[int, Path(gt=0, le=2147483647)],
+    db: Session = Depends(get_db)
+):
+    lancamento = db.get(models.LancamentoDespesa, lancamento_id)
+    if lancamento is None:
+        raise HTTPException(status_code=404, detail="Lançamento não encontrado!")
+
+    db.delete(lancamento)
+    db.commit()
+    return Response(status_code=204)

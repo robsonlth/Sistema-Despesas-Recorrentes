@@ -3,13 +3,14 @@ import { useEffect, useRef } from 'react'
 export default function Modal({
   titulo,
   descricao,
+  className = '',
   ocupado = false,
   onFechar,
   children,
 }) {
   const referencia = useRef(null)
 
-  // Abre a janela quando ela aparece e fecha quando sai da tela.
+  // showModal impede a interação com a página enquanto a janela está aberta.
   useEffect(() => {
     const dialogo = referencia.current
     dialogo.showModal()
@@ -19,9 +20,9 @@ export default function Modal({
   return (
     <dialog
       ref={referencia}
-      className="modal"
+      className={`modal ${className}`}
       aria-labelledby="modal-titulo"
-      aria-describedby="modal-descricao"
+      aria-describedby={descricao ? 'modal-descricao' : undefined}
       onCancel={(evento) => {
         // Impede que a tecla Esc feche o formulário durante o envio.
         evento.preventDefault()
@@ -31,7 +32,7 @@ export default function Modal({
       <header className="modal-cabecalho">
         <div>
           <h2 id="modal-titulo">{titulo}</h2>
-          <p id="modal-descricao">{descricao}</p>
+          {descricao && <p id="modal-descricao">{descricao}</p>}
         </div>
         <button
           type="button"

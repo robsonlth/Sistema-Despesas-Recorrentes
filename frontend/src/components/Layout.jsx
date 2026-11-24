@@ -1,13 +1,13 @@
-import compassoIcon from '../assets/Compasso.png'
+import logoCompasso from '../assets/Compasso.png'
 
 const itens = [
   { nome: 'Pendências', pagina: 'pendencias' },
-  { nome: 'Despesas recorrentes' },
-  { nome: 'Lançamentos' },
-  { nome: 'Cadastros' },
+  { nome: 'Despesas recorrentes', pagina: 'despesas-recorrentes' },
+  { nome: 'Lançamentos', pagina: 'lancamentos' },
+  { nome: 'Análise', pagina: 'analise' },
+  { nome: 'Cadastros', pagina: 'cadastros' },
 ]
 
-// Exibe o menu lateral e o conteúdo recebido em children.
 export default function Layout({ children, pagina = 'pendencias' }) {
   return (
     <div className="aplicacao">
@@ -29,7 +29,7 @@ export default function Layout({ children, pagina = 'pendencias' }) {
         >
           <img
             className="marca-simbolo"
-            src={compassoIcon}
+            src={logoCompasso}
             alt=""
             aria-hidden="true"
           />
@@ -41,27 +41,16 @@ export default function Layout({ children, pagina = 'pendencias' }) {
         <div className="sidebar-linha" />
         <p className="menu-legenda">GESTÃO FINANCEIRA</p>
         <nav className="menu">
-          {itens.map((item) =>
-            item.pagina ? (
-              <a
-                key={item.nome}
-                href={`#${item.pagina}`}
-                className={`menu-item${item.pagina === pagina ? ' ativo' : ''}`}
-                aria-current={item.pagina === pagina ? 'page' : undefined}
-              >
-                <span>{item.nome}</span>
-              </a>
-            ) : (
-              <button
-                key={item.nome}
-                type="button"
-                className="menu-item"
-                disabled
-              >
-                <span>{item.nome}</span>
-              </button>
-            ),
-          )}
+          {itens.map((item) => (
+            <a
+              key={item.nome}
+              href={`#${item.pagina}`}
+              className={`menu-item${item.pagina === pagina ? ' ativo' : ''}`}
+              aria-current={item.pagina === pagina ? 'page' : undefined}
+            >
+              <span>{item.nome}</span>
+            </a>
+          ))}
         </nav>
       </aside>
       <main id="conteudo" className="conteudo" tabIndex={-1}>

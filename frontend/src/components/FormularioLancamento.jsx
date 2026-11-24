@@ -1,23 +1,33 @@
 import { useState } from 'react'
-import { criarLancamento } from '../services/api.js'
-import { dataInicialDoFormulario, formatarMes } from '../utils/formatacao.js'
+import { atualizarLancamento, criarLancamento } from '../services/api.js'
+import { dataInicialDoFormulario, formatarMes, formatarValor } from '../utils/formatacao.js'
 import Modal from './Modal.jsx'
 
 export default function FormularioLancamento({
   despesas,
   despesa,
+  lancamento,
   mes,
   onFechar,
   onSalvo,
 }) {
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
-  const [dataRecebimento, setDataRecebimento] = useState(
-    dataInicialDoFormulario(mes),
+  const [despesaId, setDespesaId] = useState(
+    String(lancamento?.despesa_recorrente_id ?? despesa?.id ?? ''),
   )
+  const [valorRecebido, setValorRecebido] = useState(lancamento?.valor_recebido ?? '')
+  const [dataRecebimento, setDataRecebimento] = useState(
+    lancamento?.data_recebimento ?? dataInicialDoFormulario(mes),
+  )
+  const despesaSelecionada = despesas.find((item) => item.id === Number(despesaId))
+  const valorEstimado = despesaSelecionada?.valor_estimado
+  // Uma estimativa de zero também deve ser comparada.
+  const acimaDoEstimado = valorRecebido !== ''
+    && valorEstimado !== null && valorEstimado !== undefined && valorEstimado !== ''
+    && Number(valorRecebido) > Number(valorEstimado)
 
   async function salvar(evento) {
-    // Evita recarregar a página ao enviar o formulário.
     evento.preventDefault()
     if (salvando) return
     const valores = Object.fromEntries(new FormData(evento.currentTarget))
@@ -31,9 +41,11 @@ export default function FormularioLancamento({
         data_recebimento: valores.data_recebimento,
         observacao: valores.observacao.trim() || null,
         nota_pendente: valores.nota_pendente === 'on',
-        ativo: true,
+        ativo: lancamento ? valores.ativo === 'true' : true,
       }
-      const registro = await criarLancamento(cadastro)
+      const registro = lancamento
+        ? await atualizarLancamento(lancamento.id, cadastro)
+        : await criarLancamento(cadastro)
       onSalvo(registro)
     } catch (falha) {
       setErro(falha.message)
@@ -43,8 +55,7 @@ export default function FormularioLancamento({
 
   return (
     <Modal
-      titulo="Novo lançamento"
-      descricao="Registre o recebimento vinculado a uma despesa recorrente."
+      titulo={lancamento ? 'Editar lançamento' : 'Novo lançamento'}
       ocupado={salvando}
       onFechar={onFechar}
     >
@@ -65,7 +76,8 @@ export default function FormularioLancamento({
             <select
               name="despesa_recorrente_id"
               required
-              defaultValue={despesa?.id ?? ''}
+              value={despesaId}
+              onChange={(evento) => setDespesaId(evento.target.value)}
             >
               <option value="" disabled>
                 Selecione uma despesa
@@ -83,6 +95,9 @@ export default function FormularioLancamento({
               Valor recebido (R$)
               <input
                 name="valor_recebido"
+                value={valorRecebido}
+                onChange={(evento) => setValorRecebido(evento.target.value)}
+                aria-describedby={acimaDoEstimado ? 'aviso-valor-estimado' : undefined}
                 type="number"
                 inputMode="decimal"
                 min="0"
@@ -106,28 +121,47 @@ export default function FormularioLancamento({
             </label>
           </div>
           <p className="dica-campo">
-            Competência:{' '}
             {dataRecebimento
-              ? formatarMes(dataRecebimento.slice(0, 7))
-              : 'selecione a data'}
-            . Definida pela data de recebimento.
+              ? `Competência: ${formatarMes(dataRecebimento.slice(0, 7))}, conforme a data de recebimento.`
+              : 'Selecione a data de recebimento para definir a competência.'}
           </p>
+          {acimaDoEstimado && (
+            <p id="aviso-valor-estimado" className="aviso" role="status">
+              O valor informado é maior que o estimado de {formatarValor(valorEstimado)}.
+              {' '}Se desejar, explique o motivo no campo abaixo.
+            </p>
+          )}
           <label className="campo">
-            Observação <span className="opcional">Opcional</span>
+            {acimaDoEstimado ? 'Justificativa / observação' : 'Observação'}
+            {' '}<span className="opcional">Opcional</span>
             <textarea
               name="observacao"
+              defaultValue={lancamento?.observacao ?? ''}
+              aria-describedby={acimaDoEstimado ? 'aviso-valor-estimado' : undefined}
               maxLength={320}
               rows={3}
-              placeholder="Informações sobre este lançamento"
+              placeholder={acimaDoEstimado
+                ? 'Se desejar, explique o motivo do valor acima do estimado'
+                : 'Informações sobre este lançamento'}
             />
           </label>
           <label className="campo-checkbox">
             <input
               name="nota_pendente"
               type="checkbox"
+              defaultChecked={lancamento?.nota_pendente ?? false}
             />
             <span>Nota fiscal pendente</span>
           </label>
+          {lancamento && (
+            <label className="campo">
+              Situação do lançamento
+              <select name="ativo" defaultValue={String(lancamento.ativo)}>
+                <option value="true">Ativo</option>
+                <option value="false">Inativo</option>
+              </select>
+            </label>
+          )}
         </fieldset>
         <footer className="modal-acoes">
           <button

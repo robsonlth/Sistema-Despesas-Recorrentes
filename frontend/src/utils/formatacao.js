@@ -23,6 +23,14 @@ export function formatarValor(valor) {
     : moeda.format(Number(valor))
 }
 
+export function formatarPercentual(valor) {
+  return `${new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 }).format(Number(valor))}%`
+}
+
+export function formatarVencimento(dia) {
+  return dia == null ? 'Não informado' : `Dia ${dia}`
+}
+
 export function formatarMes(mes) {
   const [ano, numero] = mes.split('-')
   return `${meses[Number(numero) - 1]} de ${ano}`

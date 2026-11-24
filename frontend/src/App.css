@@ -1,3 +1,69 @@
+.botao.perigo {
+  color: #ffffff;
+  background: #b13c3c;
+  border-color: #b13c3c;
+}
+.botao.perigo:hover:not(:disabled) {
+  background: #922f2f;
+}
+.botao-texto.acao-excluir {
+  color: #a33c3c;
+}
+.editor-rateios {
+  margin: 0 0 22px;
+  padding: 18px;
+  border: 1px solid var(--borda);
+  border-radius: 8px;
+}
+.editor-rateios h3 {
+  margin-bottom: 16px;
+  font-size: 14px;
+  color: var(--deep-blue);
+}
+.linha-rateio {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(100px, 135px) auto;
+  gap: 12px;
+  align-items: center;
+}
+.resumo-rateios {
+  display: grid;
+  gap: 6px;
+  padding-top: 14px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #42556f;
+}
+.resumo-rateios p {
+  color: #94702c;
+}
+.detalhes-rateio {
+  font-size: 11px;
+  line-height: 1.6;
+}
+.detalhes-rateio ul {
+  margin: 3px 0;
+  padding: 0;
+  list-style: none;
+}
+.tabela-lancamentos .acoes-despesa {
+  flex-wrap: wrap;
+}
+@media (max-width: 560px) {
+  .editor-rateios {
+    padding: 12px;
+  }
+  .linha-rateio {
+    grid-template-columns: minmax(0, 1fr) minmax(100px, 1fr);
+    gap: 0 10px;
+    margin-bottom: 16px;
+  }
+  .linha-rateio .botao-texto {
+    grid-column: 1 / -1;
+    justify-self: end;
+  }
+}
+
 /* Layout e menu lateral */
 .aplicacao {
   min-height: 100vh;
@@ -71,9 +137,6 @@
   text-align: left;
   white-space: nowrap;
 }
-.menu-item:disabled {
-  cursor: default;
-}
 .menu-item.ativo {
   background: #3b82f621;
   border-color: #3b82f62e;
@@ -94,7 +157,11 @@
   padding: 44px 38px 34px;
   outline: none;
 }
-.pagina-pendencias {
+.pagina-pendencias,
+.pagina-despesas,
+.pagina-lancamentos,
+.pagina-analise,
+.pagina-cadastros {
   max-width: 1510px;
   margin: 0 auto;
 }
@@ -374,6 +441,53 @@ progress::-moz-progress-bar {
   cursor: default;
 }
 
+/* Valores que ultrapassaram a estimativa no mês */
+.despesas-acima-estimado {
+  margin-bottom: 30px;
+}
+.cabecalho-lista.cabecalho-excedentes {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+}
+.cabecalho-excedentes p {
+  font-size: 11px;
+  color: #64738a;
+}
+.cabecalho-excedentes strong {
+  margin-left: 8px;
+  color: #8b631f;
+  font-size: 14px;
+}
+.tabela-despesas.tabela-acima-estimado {
+  min-width: 900px;
+}
+.tabela-despesas.tabela-acima-estimado th:first-child {
+  width: 30%;
+}
+.tabela-despesas.tabela-acima-estimado th:not(:first-child) {
+  width: 17%;
+}
+.tabela-despesas.tabela-acima-estimado th:last-child {
+  width: 19%;
+}
+.tabela-acima-estimado .coluna-valor {
+  white-space: nowrap;
+}
+.tabela-acima-estimado .botao {
+  padding: 9px 12px;
+  font-size: 11px;
+}
+.valor-excedente {
+  display: inline-block;
+  border-radius: 5px;
+  padding: 3px 7px;
+  background: #fcf8ed;
+  color: #8b631f;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 /* Lista de despesas */
 .cabecalho-lista {
   display: flex;
@@ -487,6 +601,39 @@ progress::-moz-progress-bar {
 }
 .tabela-despesas tbody tr:hover {
   background: #fbfcff;
+}
+.tabela-despesas tbody tr.vencimento-proximo {
+  background: #fffbf3;
+}
+.tabela-despesas tbody tr.vencimento-proximo:hover {
+  background: #fff7e8;
+}
+.tabela-despesas tbody tr.vencimento-proximo td:first-child {
+  box-shadow: inset 3px 0 #dfbc72;
+}
+.tabela-despesas tbody tr.vencimento-atrasado {
+  background: #fff7f6;
+}
+.tabela-despesas tbody tr.vencimento-atrasado:hover {
+  background: #fff0ed;
+}
+.tabela-despesas tbody tr.vencimento-atrasado td:first-child {
+  box-shadow: inset 3px 0 #dfa49e;
+}
+.aviso-vencimento {
+  display: inline-flex;
+  margin-top: 6px;
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: #fff1d6;
+  color: #806027;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.aviso-vencimento-atrasado {
+  background: #fce7e3;
+  color: #9a4940;
 }
 .fornecedor-nome {
   display: block;
@@ -691,6 +838,63 @@ progress::-moz-progress-bar {
 .campo textarea {
   resize: vertical;
 }
+.campo-fornecedor {
+  position: relative;
+  min-width: 0;
+}
+.campo-fornecedor input[type="hidden"] {
+  display: none;
+}
+.fornecedor-sugestoes {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  margin-top: 5px;
+  border: 1px solid var(--borda);
+  border-radius: 6px;
+  background: var(--white);
+  box-shadow: 0 8px 24px #0a1f4414;
+  overflow: hidden;
+}
+.fornecedor-sugestoes ul {
+  list-style: none;
+  padding: 4px;
+  margin: 0;
+  max-height: 190px;
+  overflow-y: auto;
+}
+.fornecedor-opcao {
+  display: block;
+  width: 100%;
+  padding: 9px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--charcoal);
+  font-size: 12px;
+  font-weight: 400;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.fornecedor-opcao:hover,
+.fornecedor-opcao.destacada,
+.fornecedor-opcao[aria-selected="true"] {
+  background: #eff5ff;
+  color: var(--deep-blue);
+}
+.fornecedor-opcao small {
+  display: block;
+  margin-top: 3px;
+  color: #7b8799;
+  font-size: 11px;
+}
+.fornecedor-sem-resultados {
+  padding: 8px 12px 12px;
+  font-weight: 400;
+  color: #7b8799;
+}
 .opcional {
   font-size: 10px;
   font-weight: 400;
@@ -788,9 +992,488 @@ progress::-moz-progress-bar {
   background: #f6f8fb;
   border-radius: 5px;
 }
+.nota-item .observacao-consulta {
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .lista-notas .estado-vazio {
   border: 0;
   min-height: 230px;
+}
+.modal-consulta-lancamentos {
+  width: min(680px, calc(100% - 32px));
+}
+.modal-consulta-lancamentos .modal-cabecalho h2 {
+  font-size: 22px;
+}
+.modal-consulta-lancamentos .modal-cabecalho p {
+  font-size: 13px;
+}
+.modal-consulta-lancamentos .nota-item {
+  padding: 26px 0;
+}
+.modal-consulta-lancamentos .nota-item span {
+  font-size: 12px;
+}
+.modal-consulta-lancamentos .observacao-consulta {
+  font-size: 14px;
+}
+.modal-consulta-lancamentos .nota-item > strong {
+  font-size: 16px;
+}
+
+/* Despesas recorrentes */
+.menu a.menu-item:hover:not(.ativo) {
+  background: #ffffff09;
+  color: var(--white);
+}
+.filtros-recorrentes {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.4fr) minmax(150px, 0.9fr) minmax(200px, 1.2fr) minmax(100px, 0.6fr) auto;
+  align-items: end;
+  gap: 16px;
+}
+.filtros-recorrentes > div {
+  min-width: 0;
+}
+.filtros-recorrentes .controle-mes input {
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+}
+.controle-busca input {
+  width: 100%;
+  height: 41px;
+  border: 1px solid #dce3ed;
+  border-radius: 6px;
+  background: var(--white);
+  color: var(--charcoal);
+  padding: 10px 12px;
+  font-size: 12px;
+}
+.controle-busca input::placeholder {
+  color: #9aa5b5;
+}
+.resumo-recorrentes {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  padding: 22px 23px;
+  border-bottom: 1px solid var(--borda);
+}
+.resumo-recorrentes h2 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--deep-blue);
+}
+.resumo-recorrentes p {
+  font-size: 11px;
+  color: #7b8799;
+  margin-top: 7px;
+}
+.total-estimado {
+  text-align: right;
+}
+.total-estimado > span {
+  display: block;
+  font-size: 11px;
+  color: #7b8799;
+  margin-bottom: 6px;
+}
+.total-estimado strong {
+  color: var(--deep-blue);
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -0.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.tabela-despesas.tabela-recorrentes {
+  min-width: 1000px;
+}
+.tabela-recorrentes th {
+  background: #fafbfd;
+  padding-top: 15px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid var(--borda);
+}
+.tabela-recorrentes th:first-child {
+  width: 24%;
+}
+.tabela-recorrentes th:nth-child(2) {
+  width: 20%;
+}
+.tabela-recorrentes th:nth-child(3) {
+  width: 13%;
+}
+.tabela-recorrentes th:nth-child(4) {
+  width: 14%;
+}
+.tabela-recorrentes th:nth-child(5) {
+  width: 9%;
+}
+.tabela-recorrentes th:nth-child(6) {
+  width: 20%;
+}
+.descricao-recorrente {
+  white-space: pre-line;
+}
+.etiqueta-departamento {
+  color: #39649e;
+  background: #edf4ff;
+  border-color: #e1ebfa;
+  margin-bottom: 5px;
+}
+.detalhe-recorrente {
+  display: block;
+  font-size: 10px;
+  margin-top: 3px;
+}
+.detalhe-recorrente > span {
+  color: #8893a4;
+}
+.etiqueta-situacao {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 5px;
+  padding: 3px 7px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.etiqueta-situacao > span {
+  height: 4px;
+  width: 4px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.situacao-ativa {
+  background: #edf8f2;
+  color: #23654d;
+}
+.situacao-inativa {
+  background: #f1f4f8;
+  color: #64738a;
+}
+.acoes-despesa {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+.acoes-despesa .botao-texto {
+  padding: 6px 7px;
+  min-height: 34px;
+}
+.acao-lancar {
+  color: #2d6ed1;
+  background: #eff5ff;
+}
+.lista-recorrentes .estado-vazio {
+  min-height: 220px;
+  border: 0;
+  border-radius: 0;
+}
+.rodape-estimativa {
+  color: #7b8799;
+  font-size: 11px;
+  padding: 15px 23px;
+  line-height: 1.6;
+  border-top: 1px solid var(--borda);
+}
+.despesa-confirmacao {
+  font-size: 13px;
+  color: var(--deep-blue);
+  line-height: 1.7;
+  margin-bottom: 24px;
+  overflow-wrap: anywhere;
+}
+.despesa-confirmacao span {
+  display: block;
+  color: #64738a;
+  font-size: 12px;
+  margin-top: 4px;
+}
+@media (max-width: 1200px) {
+  .filtros-recorrentes {
+    grid-template-columns: 1fr 1fr;
+  }
+  .filtros-recorrentes > .botao {
+    justify-self: start;
+  }
+}
+@media (max-width: 540px) {
+  .filtros-recorrentes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .filtros-recorrentes > .botao {
+    justify-self: stretch;
+  }
+  .resumo-recorrentes {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 20px 18px;
+  }
+  .total-estimado {
+    text-align: left;
+  }
+}
+
+/* Lançamentos */
+.acoes-cabecalho-lancamentos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.filtros-lancamentos {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.filtros-lancamentos .filtro-busca {
+  grid-column: span 2;
+}
+.filtros-lancamentos > .botao {
+  justify-self: end;
+}
+.tabela-despesas.tabela-pendentes-lancamento,
+.tabela-despesas.tabela-lancamentos {
+  min-width: 1000px;
+}
+.tabela-pendentes-lancamento th,
+.tabela-lancamentos th {
+  background: #fafbfd;
+  padding-top: 15px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid var(--borda);
+}
+.tabela-pendentes-lancamento th:first-child {
+  width: 20%;
+}
+.tabela-pendentes-lancamento th:nth-child(2) {
+  width: 23%;
+}
+.tabela-pendentes-lancamento th:nth-child(3) {
+  width: 15%;
+}
+.tabela-pendentes-lancamento th:nth-child(4) {
+  width: 15%;
+}
+.tabela-pendentes-lancamento th:nth-child(5) {
+  width: 15%;
+}
+.tabela-pendentes-lancamento th:nth-child(6) {
+  width: 12%;
+}
+.tabela-lancamentos th:first-child {
+  width: 24%;
+}
+.tabela-lancamentos th:nth-child(2) {
+  width: 20%;
+}
+.tabela-lancamentos th:nth-child(3),
+.tabela-lancamentos th:nth-child(4) {
+  width: 13%;
+}
+.tabela-lancamentos th:nth-child(5) {
+  width: 16%;
+}
+.tabela-lancamentos th:nth-child(6) {
+  width: 14%;
+}
+.lista-lancamentos-vazia {
+  padding: 24px 23px;
+  color: #7b8799;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.observacao-lancamento {
+  display: block;
+  color: #7b8799;
+  font-size: 10px;
+  margin-top: 7px;
+  white-space: pre-line;
+}
+.situacao-lancamento {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+}
+.nota-pendente {
+  color: #94702c;
+  background: #fcf8ed;
+}
+.nota-regular {
+  color: #7b8799;
+  font-size: 10px;
+}
+@media (max-width: 1200px) {
+  .filtros-lancamentos {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 540px) {
+  .filtros-lancamentos {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .filtros-lancamentos .filtro-busca {
+    grid-column: auto;
+  }
+  .filtros-lancamentos > .botao {
+    justify-self: stretch;
+  }
+}
+
+/* Cadastros */
+.abas-cadastros {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--borda);
+  margin-bottom: 22px;
+  padding: 4px 3px 0;
+}
+.abas-cadastros button {
+  flex-shrink: 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 14px 16px;
+  background: transparent;
+  color: #64738a;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.abas-cadastros button:hover {
+  color: var(--deep-blue);
+  background: #edf3fc;
+}
+.abas-cadastros button[aria-selected='true'] {
+  color: #2765c4;
+  border-bottom-color: var(--brand-blue);
+  font-weight: 600;
+}
+.abas-cadastros button:focus-visible {
+  outline-offset: -3px;
+}
+.filtros-cadastros {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.45fr) auto;
+  align-items: end;
+  gap: 16px;
+}
+.filtros-cadastros > div {
+  min-width: 0;
+}
+.tabela-despesas.tabela-cadastros {
+  min-width: 640px;
+}
+.tabela-despesas.tabela-cadastros th {
+  width: auto;
+  background: #fafbfd;
+  padding-top: 15px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid var(--borda);
+}
+.tabela-cadastros th.coluna-cnpj {
+  width: 190px;
+}
+.tabela-cadastros th.coluna-situacao {
+  width: 120px;
+}
+.tabela-cadastros th.coluna-acao {
+  width: 160px;
+}
+@media (max-width: 960px) {
+  .filtros-cadastros {
+    grid-template-columns: minmax(0, 1fr) minmax(150px, 0.6fr);
+  }
+  .filtros-cadastros > .botao {
+    justify-self: start;
+  }
+}
+@media (max-width: 540px) {
+  .filtros-cadastros {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .filtros-cadastros > .botao {
+    justify-self: stretch;
+  }
+}
+
+/* Análise por competência */
+.indicadores.indicadores-analise {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.indicadores-analise .indicador-valor {
+  display: block;
+  font-size: clamp(22px, 2vw, 30px);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+.indicador-detalhe {
+  margin-top: 9px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #7b8799;
+}
+.aviso-estimativa-analise {
+  margin-bottom: 22px;
+  padding: 14px 18px;
+  background: #fff8eb;
+  color: #806027;
+  border: 1px solid #f0dfbd;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.tabela-despesas.tabela-analise {
+  min-width: 1100px;
+}
+.tabela-despesas.tabela-analise th {
+  width: 13%;
+}
+.tabela-despesas.tabela-analise th:first-child {
+  width: 22%;
+}
+.tabela-despesas.tabela-analise th:nth-child(2) {
+  width: 12%;
+}
+.tabela-despesas.tabela-analise th:nth-child(6) {
+  width: 10%;
+}
+.tabela-despesas.tabela-analise th:last-child {
+  width: 17%;
+}
+.tabela-analise .coluna-valor {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.situacoes-analise {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.situacao-excedente {
+  color: #a33c3c;
+  background: #fdf0f0;
+}
+.situacao-nota-pendente {
+  color: #806027;
+  background: #fff8eb;
+}
+@media (max-width: 960px) {
+  .indicadores.indicadores-analise {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 540px) {
+  .indicadores.indicadores-analise {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (min-width: 1600px) {

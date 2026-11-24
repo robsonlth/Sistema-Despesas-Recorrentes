@@ -1,17 +1,15 @@
-# Models: descrevem as tabelas e as colunas do banco de dados.
-# Cada objeto dessas classes representa um registro da tabela.
-from sqlalchemy import Boolean, String, Date, ForeignKey, Numeric
-from sqlalchemy.orm import Mapped, mapped_column
+# Models: definem as tabelas e os relacionamentos do banco de dados.
+from sqlalchemy import Boolean, String, Date, ForeignKey, Numeric, CheckConstraint
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from decimal import Decimal
 from backend.database import Base
 from datetime import date
 
 
-# Fornecedores: guarda o nome, o CNPJ e a situação do cadastro.
+# Fornecedores
 class Fornecedor(Base):
     __tablename__ = "fornecedores"
 
-    # Chave primária: identifica cada registro da tabela.
     id: Mapped[int] = mapped_column(
         primary_key=True
     )
@@ -36,7 +34,7 @@ class Fornecedor(Base):
     )
 
 
-# Departamentos: guarda os departamentos usados nas despesas.
+# Departamentos
 class Departamento(Base):
     __tablename__ = "departamentos"
 
@@ -56,7 +54,7 @@ class Departamento(Base):
     )
 
 
-# Naturezas financeiras: guarda as classificações das despesas.
+# Naturezas financeiras
 class NaturezaFinanceira(Base):
     __tablename__ = "naturezas_financeiras"
 
@@ -76,7 +74,7 @@ class NaturezaFinanceira(Base):
     )
 
 
-# Rateios: guarda os cadastros de rateio usados nas despesas.
+# Rateios
 class Rateio(Base):
     __tablename__ = "rateios"
 
@@ -96,15 +94,17 @@ class Rateio(Base):
     )
 
 
-# Despesas recorrentes: guarda as despesas previstas e seus vínculos.
+# Despesas recorrentes
 class DespesaRecorrente(Base):
     __tablename__ = "despesas_recorrentes"
+    __table_args__ = (
+        CheckConstraint("dia_vencimento BETWEEN 1 AND 31", name="ck_despesa_vencimento"),
+    )
 
     id: Mapped[int] = mapped_column(
         primary_key=True
     )
 
-    # As chaves estrangeiras ligam a despesa aos outros cadastros.
     fornecedor_id: Mapped[int] = mapped_column(
         ForeignKey("fornecedores.id"),
         nullable=False
@@ -120,10 +120,13 @@ class DespesaRecorrente(Base):
         nullable=False
     )
 
-    rateio_id: Mapped[int] = mapped_column(
-        ForeignKey("rateios.id"),
-        nullable=False
+    rateios: Mapped[list["DespesaRateio"]] = relationship(
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        order_by="DespesaRateio.rateio_id"
     )
+
+    dia_vencimento: Mapped[int | None] = mapped_column(nullable=True)
 
     descricao: Mapped[str] = mapped_column(
         String(350),
@@ -154,7 +157,29 @@ class DespesaRecorrente(Base):
     )
 
 
-# Lançamentos: guarda os valores e as datas recebidos para cada despesa.
+# Parcelas de rateio de cada despesa
+class DespesaRateio(Base):
+    __tablename__ = "despesa_rateios"
+    __table_args__ = (
+        CheckConstraint(
+            "(percentual IS NOT NULL AND valor IS NULL) OR "
+            "(percentual IS NULL AND valor IS NOT NULL)",
+            name="ck_rateio_medida"
+        ),
+        CheckConstraint("percentual BETWEEN 0 AND 100", name="ck_rateio_percentual"),
+        CheckConstraint("valor >= 0 AND valor < 100000000", name="ck_rateio_valor"),
+    )
+
+    # A chave composta impede repetir o mesmo rateio em uma despesa.
+    despesa_recorrente_id: Mapped[int] = mapped_column(
+        ForeignKey("despesas_recorrentes.id", ondelete="CASCADE"), primary_key=True
+    )
+    rateio_id: Mapped[int] = mapped_column(ForeignKey("rateios.id"), primary_key=True)
+    percentual: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    valor: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+
+
+# Lançamentos de despesas
 class LancamentoDespesa(Base):
     __tablename__ = "lancamentos_despesa"
 
@@ -162,7 +187,6 @@ class LancamentoDespesa(Base):
         primary_key=True
     )
 
-    # Liga o lançamento à despesa recorrente cadastrada.
     despesa_recorrente_id: Mapped[int] = mapped_column(
         ForeignKey("despesas_recorrentes.id"),
         nullable=False
@@ -189,7 +213,6 @@ class LancamentoDespesa(Base):
         nullable=True
     )
 
-    # Indica se a nota do lançamento está pendente.
     nota_pendente: Mapped[bool] = mapped_column(
         Boolean,
         default=False,
